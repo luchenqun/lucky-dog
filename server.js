@@ -332,6 +332,7 @@ fastify.get('/work/stats', async (request, reply) => {
     }
 
     summary.progress = summary.total > 0 ? ((summary.checked / summary.total) * 100).toFixed(2) : 0;
+    summary.passwordFound = passwordFound;
 
     return summary;
   } catch (error) {

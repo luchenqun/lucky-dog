@@ -286,20 +286,34 @@ if (isMainThread) {
       try {
         const results = await Promise.allSettled(workerPromises);
 
-        // Check if any worker found the password
+        // Collect checked passwords count from all workers
+        let totalCheckedCount = 0;
+        let foundPassword = null;
+
         for (const result of results) {
-          if (result.status === 'fulfilled' && result.value.success) {
-            return {
-              success: true,
-              password: result.value.password,
-            };
+          if (result.status === 'fulfilled') {
+            totalCheckedCount += result.value.checkedCount || 0;
+            if (result.value.success) {
+              foundPassword = result.value.password;
+            }
           }
+        }
+
+        if (foundPassword) {
+          // Password found - return all passwords as checked since we need to report the entire batch
+          return {
+            success: true,
+            password: foundPassword,
+            checkedPasswords: passwords, // Report entire batch as checked
+            totalChecked: totalCheckedCount,
+          };
         }
 
         // No password found
         return {
           success: false,
           checkedPasswords: passwords,
+          totalChecked: totalCheckedCount,
         };
       } catch (error) {
         console.error('Error processing passwords:', error);
@@ -368,12 +382,13 @@ if (isMainThread) {
             // Password found!
             this.foundPassword = result.password;
             console.log(`*** PASSWORD FOUND: ${result.password} ***`);
+            console.log(`Total passwords checked in this batch: ${result.totalChecked}`);
 
             // Save to local file
             await this.saveFoundPassword(result.password);
 
-            // Report to server
-            const submitResponse = await this.submitResult(batchId, true, result.password, passwords);
+            // Report to server - report all passwords in the batch as checked
+            const submitResponse = await this.submitResult(batchId, true, result.password, result.checkedPasswords);
 
             // Check if server tells us to stop
             if (submitResponse && submitResponse.shouldStop) {
