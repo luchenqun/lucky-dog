@@ -11,9 +11,9 @@ const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3000';
 const CPU_COUNT = os.cpus().length;
 const MAX_WORKERS = Math.min(CPU_COUNT, parseInt(process.env.MAX_WORKERS || CPU_COUNT));
 
-console.log(`Client started: ${CLIENT_ID}`);
-console.log(`CPU cores: ${CPU_COUNT}, using workers: ${MAX_WORKERS}`);
-console.log(`Server URL: ${SERVER_URL}`);
+// console.log(`Client started: ${CLIENT_ID}`);
+// console.log(`CPU cores: ${CPU_COUNT}, using workers: ${MAX_WORKERS}`);
+// console.log(`Server URL: ${SERVER_URL}`);
 
 // Core decryption functions from whale.js
 function deriveKeyFromPassword(password, salt, iterations) {
@@ -120,7 +120,7 @@ function createWorker(passwords, encrypt, workerIndex) {
 if (!isMainThread && workerData && workerData.isWorker) {
   const { passwords, encrypt, workerIndex } = workerData;
 
-  console.log(`Worker ${workerIndex} processing ${passwords.length} passwords`);
+  // console.log(`Worker ${workerIndex} processing ${passwords.length} passwords`);
 
   // Validate encrypt data
   if (!encrypt || !encrypt.encrypted_key || !encrypt.encrypted_privkey || !encrypt.uncompressed_public_key || !encrypt.salt || !encrypt.derivationiterations) {
@@ -329,7 +329,7 @@ if (isMainThread) {
             if (workRequest && workRequest.message) {
               console.log(`Info: ${workRequest.message}`);
             }
-            
+
             // 如果服务器告知密码已找到，停止客户端
             if (workRequest && workRequest.passwordFound) {
               console.log('*** PASSWORD ALREADY FOUND BY ANOTHER CLIENT ***');
@@ -337,7 +337,7 @@ if (isMainThread) {
               this.stop();
               return;
             }
-            
+
             console.log('Waiting 10 seconds before retry...');
             await new Promise((resolve) => setTimeout(resolve, 10000));
             continue;
@@ -374,7 +374,7 @@ if (isMainThread) {
 
             // Report to server
             const submitResponse = await this.submitResult(batchId, true, result.password, passwords);
-            
+
             // Check if server tells us to stop
             if (submitResponse && submitResponse.shouldStop) {
               console.log('Server confirmed password found, stopping client...');
@@ -384,7 +384,7 @@ if (isMainThread) {
 
             // Try to report the found password
             const reportSuccess = await this.reportFoundPassword(result.password);
-            
+
             if (reportSuccess) {
               console.log('Password successfully reported, stopping client...');
               this.stop();
@@ -396,7 +396,7 @@ if (isMainThread) {
               const reportInterval = setInterval(async () => {
                 const retrySuccess = await this.reportFoundPassword(result.password);
                 reportCount++;
-                
+
                 if (retrySuccess || reportCount >= 3) {
                   clearInterval(reportInterval);
                   if (retrySuccess) {
