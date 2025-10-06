@@ -1,3 +1,10 @@
+// Only load dotenv in main thread, not in worker threads
+if (require('worker_threads').isMainThread) {
+  // Disable dotenv tips/warnings
+  // process.env.DOTENV_CONFIG_SILENT = 'true';
+  require('dotenv').config();
+}
+
 const os = require('os');
 const fs = require('fs');
 const path = require('path');
@@ -9,11 +16,23 @@ const { Worker, isMainThread, parentPort, workerData } = require('worker_threads
 const CLIENT_ID = `client-${os.hostname()}-${Date.now()}`;
 const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3000';
 const CPU_COUNT = os.cpus().length;
-const MAX_WORKERS = Math.min(CPU_COUNT, parseInt(process.env.MAX_WORKERS || CPU_COUNT));
 
-// console.log(`Client started: ${CLIENT_ID}`);
-// console.log(`CPU cores: ${CPU_COUNT}, using workers: ${MAX_WORKERS}`);
-// console.log(`Server URL: ${SERVER_URL}`);
+// Reserve some CPU cores for other programs
+// Default: use 75% of CPU cores, minimum 1, maximum CPU_COUNT-1 (leave at least 1 core free)
+const CPU_USAGE_RATIO = parseFloat(process.env.CPU_USAGE_RATIO || '0.75');
+const RESERVED_CORES = Math.max(1, Math.ceil(CPU_COUNT * (1 - CPU_USAGE_RATIO)));
+const AVAILABLE_CORES = Math.max(1, CPU_COUNT - RESERVED_CORES);
+const MAX_WORKERS = Math.min(AVAILABLE_CORES, parseInt(process.env.MAX_WORKERS || AVAILABLE_CORES));
+
+if (require('worker_threads').isMainThread) {
+  console.log(`Client started: ${CLIENT_ID}`);
+  console.log(`CPU cores detected: ${CPU_COUNT}`);
+  console.log(`CPU usage ratio: ${(CPU_USAGE_RATIO * 100).toFixed(0)}%`);
+  console.log(`Reserved cores for other programs: ${RESERVED_CORES}`);
+  console.log(`Available cores for password cracking: ${AVAILABLE_CORES}`);
+  console.log(`Using workers: ${MAX_WORKERS}`);
+  console.log(`Server URL: ${SERVER_URL}`);
+}
 
 // Core decryption functions from whale.js
 function deriveKeyFromPassword(password, salt, iterations) {
@@ -205,7 +224,7 @@ if (isMainThread) {
     async requestWork() {
       try {
         const result = await this.makeRequest('/work/request', 'POST', {
-          cpuCount: CPU_COUNT,
+          cpuCount: MAX_WORKERS, // Report actual worker count, not total CPU count
           clientId: CLIENT_ID,
         });
 
