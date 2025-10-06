@@ -19,7 +19,7 @@ function generateRandomAsciiLetters(length = 10) {
 
 function main() {
   let passwords = [];
-  const total = 5000;
+  const total = 3000;
   console.log('开始生成');
   console.time(`生成${total}条密码耗时`);
   for (let i = 0; i < total; i++) {

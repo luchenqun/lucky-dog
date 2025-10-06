@@ -45,6 +45,7 @@ const STATUS = {
 };
 
 let shuttingDown = false;
+let passwordFound = false; // 全局标记，密码是否已找到
 
 const encrypt = require('./encrypt.json');
 
@@ -119,6 +120,17 @@ fastify.post('/work/request', async (request, reply) => {
     return { error: 'clientId is required' };
   }
 
+  // 如果密码已找到，停止分发新任务
+  if (passwordFound) {
+    return {
+      success: false,
+      message: 'Password already found, no more work needed',
+      passwords: [],
+      encrypt: null,
+      passwordFound: true,
+    };
+  }
+
   // 计算批次大小，基于CPU核心数
   const batchSize = Math.max(100, cpuCount * 100);
 
@@ -179,7 +191,9 @@ fastify.post('/work/result', async (request, reply) => {
 
   try {
     if (success && foundPassword) {
-      // 找到密码了！
+      // 找到密码了！设置全局标记
+      passwordFound = true;
+
       fastify.log.info(`🎉 密码找到了！客户端 ${clientId} 找到密码: ${foundPassword}`);
 
       // 保存结果到文件
@@ -187,11 +201,12 @@ fastify.post('/work/result', async (request, reply) => {
       const result = `找到密码: ${foundPassword}\n时间: ${new Date().toISOString()}\n客户端: ${clientId}\n`;
       await fs.promises.appendFile(resultFile, result);
 
-      // 可以选择停止所有工作或继续
+      // 停止所有工作
       return {
         success: true,
-        message: 'Password found! Great job!',
+        message: 'Password found! All work stopped!',
         shouldStop: true,
+        passwordFound: true,
       };
     } else {
       // 没找到密码，标记这批密码为已检查
@@ -235,6 +250,9 @@ fastify.post('/work/found', async (request, reply) => {
   }
 
   try {
+    // 设置全局标记
+    passwordFound = true;
+
     fastify.log.info(`🎉🎉🎉 密码确认找到！客户端 ${clientId}: ${password}`);
 
     // 保存到文件
@@ -245,6 +263,7 @@ fastify.post('/work/found', async (request, reply) => {
     return {
       success: true,
       message: 'Password confirmed and saved',
+      passwordFound: true,
     };
   } catch (error) {
     fastify.log.error('保存找到的密码时出错:', error);

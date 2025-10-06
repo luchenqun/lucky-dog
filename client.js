@@ -244,18 +244,21 @@ if (isMainThread) {
             clientId: CLIENT_ID,
           });
 
-          if (result.success) {
+          if (result && result.success) {
             console.log('Password successfully reported to server');
-            return true;
+            return true; // 成功报告，不需要再重试
           }
         } catch (error) {
           console.error(`Failed to report password (retry ${retryCount + 1}/${maxRetries}):`, error.message);
         }
 
         retryCount++;
-        await new Promise((resolve) => setTimeout(resolve, 5000)); // Wait 5 seconds before retry
+        if (retryCount < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 5000)); // Wait 5 seconds before retry
+        }
       }
 
+      console.error('Failed to report password after all retries');
       return false;
     }
 
@@ -316,13 +319,6 @@ if (isMainThread) {
     async run() {
       console.log('Client starting...');
 
-      // If password was found before, continue reporting
-      if (this.foundPassword) {
-        setInterval(() => {
-          this.reportFoundPassword(this.foundPassword);
-        }, 30000); // Report every 30 seconds
-      }
-
       while (this.running) {
         try {
           // Request work
@@ -333,6 +329,15 @@ if (isMainThread) {
             if (workRequest && workRequest.message) {
               console.log(`Info: ${workRequest.message}`);
             }
+            
+            // 如果服务器告知密码已找到，停止客户端
+            if (workRequest && workRequest.passwordFound) {
+              console.log('*** PASSWORD ALREADY FOUND BY ANOTHER CLIENT ***');
+              console.log('Stopping client...');
+              this.stop();
+              return;
+            }
+            
             console.log('Waiting 10 seconds before retry...');
             await new Promise((resolve) => setTimeout(resolve, 10000));
             continue;
@@ -368,15 +373,41 @@ if (isMainThread) {
             await this.saveFoundPassword(result.password);
 
             // Report to server
-            await this.submitResult(batchId, true, result.password, passwords);
-            await this.reportFoundPassword(result.password);
+            const submitResponse = await this.submitResult(batchId, true, result.password, passwords);
+            
+            // Check if server tells us to stop
+            if (submitResponse && submitResponse.shouldStop) {
+              console.log('Server confirmed password found, stopping client...');
+              this.stop();
+              return;
+            }
 
-            // Set up continuous reporting
-            setInterval(() => {
-              this.reportFoundPassword(result.password);
-            }, 30000);
-
-            console.log('Continuing work in case other clients are also searching...');
+            // Try to report the found password
+            const reportSuccess = await this.reportFoundPassword(result.password);
+            
+            if (reportSuccess) {
+              console.log('Password successfully reported, stopping client...');
+              this.stop();
+              return;
+            } else {
+              console.log('Failed to report password, will retry periodically...');
+              // Set up periodic retry if initial report failed
+              let reportCount = 0;
+              const reportInterval = setInterval(async () => {
+                const retrySuccess = await this.reportFoundPassword(result.password);
+                reportCount++;
+                
+                if (retrySuccess || reportCount >= 3) {
+                  clearInterval(reportInterval);
+                  if (retrySuccess) {
+                    console.log('Password finally reported successfully, stopping client...');
+                  } else {
+                    console.log('Failed to report password after multiple attempts, stopping client...');
+                  }
+                  this.stop();
+                }
+              }, 10000); // Retry every 10 seconds
+            }
           } else {
             // No password found, report results
             console.log(`No password found, checked ${result.checkedPasswords.length} passwords`);
