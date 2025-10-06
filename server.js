@@ -120,7 +120,7 @@ fastify.post('/work/request', async (request, reply) => {
   }
 
   // 计算批次大小，基于CPU核心数
-  const batchSize = Math.max(100, cpuCount * 50);
+  const batchSize = Math.max(100, cpuCount * 100);
 
   // 获取未检查的密码
   const getUncheckedStmt = db.prepare(`

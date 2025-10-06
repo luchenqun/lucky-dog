@@ -23,3 +23,5 @@ build/
 
 encrypt.json
 encrypt.true.json
+
+*.txt

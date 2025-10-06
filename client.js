@@ -15,40 +15,55 @@ console.log(`Client started: ${CLIENT_ID}`);
 console.log(`CPU cores: ${CPU_COUNT}, using workers: ${MAX_WORKERS}`);
 console.log(`Server URL: ${SERVER_URL}`);
 
-// Core decryption functions from lucky.js
-function deriveKeyFromPassword(password, iterations = 1) {
-  let key = Buffer.from(password, 'utf8');
+// Core decryption functions from whale.js
+function deriveKeyFromPassword(password, salt, iterations) {
+  const vKeyData = Buffer.from(password, 'utf8');
+  const vSalt = Buffer.from(salt, 'hex');
+  let data = Buffer.concat([vKeyData, vSalt]);
+
   for (let i = 0; i < iterations; i++) {
-    key = crypto.createHash('sha512').update(key).digest();
+    data = crypto.createHash('sha512').update(data).digest();
   }
-  return key.subarray(0, 32);
+
+  const derivedKey = data.slice(0, 32); // 前32字节作为密钥
+  const iv = data.slice(32, 48); // 后16字节作为IV
+
+  return { derivedKey, iv };
 }
 
-function decryptMasterKey(encryptedMasterKey, key) {
+function decryptMasterKey(derivedKey, iv, encryptedKey) {
   try {
-    const decipher = crypto.createDecipheriv('aes-256-cbc', key, Buffer.alloc(16, 0));
-    decipher.setAutoPadding(false);
+    const encryptedKeyBytes = Buffer.from(encryptedKey, 'hex');
+    const cipher = crypto.createDecipheriv('aes-256-cbc', derivedKey, iv);
+    cipher.setAutoPadding(false);
 
-    let decrypted = decipher.update(encryptedMasterKey);
-    const final = decipher.final();
-    decrypted = Buffer.concat([decrypted, final]);
+    const decryptedMaster = Buffer.concat([cipher.update(encryptedKeyBytes), cipher.final()]);
 
-    return decrypted.subarray(0, 32);
+    return decryptedMaster.slice(0, 32); // 只取前32字节
   } catch (error) {
     return null;
   }
 }
 
-function decryptPrivateKey(encryptedPrivateKey, masterKey, publicKeyBytes) {
+function doublesha256(bytestring) {
+  const firstHash = crypto.createHash('sha256').update(bytestring).digest();
+  return crypto.createHash('sha256').update(firstHash).digest();
+}
+
+function decryptPrivateKey(masterKey, publicKeyBuf, encryptedPrivkey) {
   try {
-    const iv = crypto.createHash('sha256').update(crypto.createHash('sha256').update(publicKeyBytes).digest()).digest().subarray(0, 16);
-    const decipher = crypto.createDecipheriv('aes-256-cbc', masterKey, iv);
+    // 使用原始公钥的双重SHA256作为IV（2011年格式）
+    const ivFull = doublesha256(publicKeyBuf);
+    const iv = ivFull.slice(0, 16); // 只取前16字节作为IV
 
-    let decrypted = decipher.update(encryptedPrivateKey);
-    const final = decipher.final();
-    decrypted = Buffer.concat([decrypted, final]);
+    // 使用AES-256-CBC解密私钥
+    const encryptedPrivkeyBytes = Buffer.from(encryptedPrivkey, 'hex');
+    const cipher = crypto.createDecipheriv('aes-256-cbc', masterKey, iv);
+    cipher.setAutoPadding(false);
 
-    return decrypted.subarray(0, 32);
+    const decryptedPrivkey = Buffer.concat([cipher.update(encryptedPrivkeyBytes), cipher.final()]);
+
+    return decryptedPrivkey.slice(0, 32); // 只取前32字节
   } catch (error) {
     return null;
   }
@@ -56,8 +71,17 @@ function decryptPrivateKey(encryptedPrivateKey, masterKey, publicKeyBytes) {
 
 function validatePrivateKey(privateKey, expectedPublicKey) {
   try {
-    const publicKey = secp256k1.publicKeyCreate(privateKey, false);
-    return Buffer.compare(publicKey, expectedPublicKey) === 0;
+    // 检查私钥是否有效
+    if (!secp256k1.privateKeyVerify(privateKey)) {
+      return false;
+    }
+
+    // 使用secp256k1生成公钥，生成非压缩公钥（65字节，2011年格式）
+    let generatedPublicKeyBuf = Buffer.alloc(65);
+    secp256k1.publicKeyCreate(privateKey, false, generatedPublicKeyBuf);
+
+    // 比较生成的公钥和期望的公钥
+    return generatedPublicKeyBuf.equals(expectedPublicKey);
   } catch (error) {
     return false;
   }
@@ -99,18 +123,16 @@ if (!isMainThread && workerData && workerData.isWorker) {
   console.log(`Worker ${workerIndex} processing ${passwords.length} passwords`);
 
   // Validate encrypt data
-  if (!encrypt || !encrypt.encrypted_key || !encrypt.encrypted_privkey || !encrypt.uncompressed_public_key) {
+  if (!encrypt || !encrypt.encrypted_key || !encrypt.encrypted_privkey || !encrypt.uncompressed_public_key || !encrypt.salt || !encrypt.derivationiterations) {
     console.error(`Worker ${workerIndex} error: Invalid encrypt data`, encrypt);
     parentPort.postMessage({
       success: false,
       error: 'Invalid encrypt data',
-      checkedCount: 0
+      checkedCount: 0,
     });
     process.exit(1);
   }
 
-  const encryptedMasterKeyBuffer = Buffer.from(encrypt.encrypted_key, 'hex');
-  const encryptedPrivateKeyBuffer = Buffer.from(encrypt.encrypted_privkey, 'hex');
   const publicKeyBuffer = Buffer.from(encrypt.uncompressed_public_key, 'hex');
 
   let found = false;
@@ -120,25 +142,22 @@ if (!isMainThread && workerData && workerData.isWorker) {
     if (found) break;
 
     try {
-      // Try different iteration counts
-      for (const iterations of [1, 10, 100, 1000, 10000]) {
-        const key = deriveKeyFromPassword(password, iterations);
-        const masterKey = decryptMasterKey(encryptedMasterKeyBuffer, key);
+      // Use the correct parameters from encrypt data
+      const { derivedKey, iv } = deriveKeyFromPassword(password, encrypt.salt, encrypt.derivationiterations);
+      const masterKey = decryptMasterKey(derivedKey, iv, encrypt.encrypted_key);
 
-        if (masterKey) {
-          const privateKey = decryptPrivateKey(encryptedPrivateKeyBuffer, masterKey, publicKeyBuffer);
+      if (masterKey) {
+        const privateKey = decryptPrivateKey(masterKey, publicKeyBuffer, encrypt.encrypted_privkey);
 
-          if (privateKey && validatePrivateKey(privateKey, publicKeyBuffer)) {
-            console.log(`PASSWORD FOUND! Worker ${workerIndex}: ${password} (iterations: ${iterations})`);
-            found = true;
-            parentPort.postMessage({
-              success: true,
-              password,
-              iterations,
-              checkedCount: checkedCount + 1,
-            });
-            break;
-          }
+        if (privateKey && validatePrivateKey(privateKey, publicKeyBuffer)) {
+          console.log(`PASSWORD FOUND! Worker ${workerIndex}: ${password}`);
+          found = true;
+          parentPort.postMessage({
+            success: true,
+            password,
+            checkedCount: checkedCount + 1,
+          });
+          break;
         }
       }
     } catch (error) {
@@ -270,7 +289,6 @@ if (isMainThread) {
             return {
               success: true,
               password: result.value.password,
-              iterations: result.value.iterations,
             };
           }
         }
@@ -324,7 +342,14 @@ if (isMainThread) {
           console.log(`Received ${passwords.length} passwords to check`);
 
           // Validate encrypt data
-          if (!encrypt || !encrypt.encrypted_key || !encrypt.encrypted_privkey || !encrypt.uncompressed_public_key) {
+          if (
+            !encrypt ||
+            !encrypt.encrypted_key ||
+            !encrypt.encrypted_privkey ||
+            !encrypt.uncompressed_public_key ||
+            !encrypt.salt ||
+            !encrypt.derivationiterations
+          ) {
             console.error('Invalid encrypt data received from server:', encrypt);
             console.log('Waiting 10 seconds before retry...');
             await new Promise((resolve) => setTimeout(resolve, 10000));
