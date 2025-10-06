@@ -1,0 +1,11 @@
+{
+  "nID": 1,
+  "salt": "a1cbc74090f455e8",
+  "derivationmethod": 0,
+  "derivationiterations": 112644,
+  "encrypted_key": "30de5691827989bfbb6aceba989630db083fc4c184e2682d3b3856e3ebddbe0fde948d44544e0e563568a4af7e88999c",
+  "encrypted_privkey": "f331adf806cc49af8917cf4dccd66020d0e9b210294fcb1cac351c92864840b6df511b1849fa6ef248f958bbe5ba6dd0",
+  "password": "1234567890",
+  "uncompressed_public_key": "042dd2ed1f40ff2cc6b036546f54dec05b08edee70fbd88c44176347b03e1303d4f6d12e58c8de5064e2451dc01d73bc66843a9fa76002ff2992dc49be8568709a",
+  "public_key": "022dd2ed1f40ff2cc6b036546f54dec05b08edee70fbd88c44176347b03e1303d4"
+}

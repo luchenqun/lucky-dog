@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 const path = require('path');
-const fs = require('fs/promises');
+const fs = require('fs');
 const Fastify = require('fastify');
 const Database = require('better-sqlite3');
 
@@ -44,8 +44,10 @@ const STATUS = {
 
 let shuttingDown = false;
 
+const encrypt = require('./encrypt.json');
+
 fastify.get('/', async (_request, reply) => {
-  const html = await fs.readFile(INDEX_PATH, 'utf8');
+  const html = await fs.promises.readFile(INDEX_PATH, 'utf8');
   reply.type('text/html').send(html);
 });
 
@@ -115,13 +117,19 @@ function handleShutdown(signal) {
   fastify.log.info({ signal }, 'Received shutdown signal. Closing services.');
 
   Promise.resolve()
-    .then(() => fastify.close())
+    .then(() => {
+      fastify.log.info('关闭Fastify');
+      return fastify.close();
+    })
     .catch((error) => {
       fastify.log.error(error, 'Error while closing Fastify');
     })
     .finally(() => {
       try {
+        fastify.log.info('关闭数据库');
+        console.time('关闭数据库耗时');
         db.close();
+        console.timeEnd('关闭数据库耗时');
       } catch (error) {
         fastify.log.error(error, 'Error while closing database');
       }
@@ -132,9 +140,8 @@ function handleShutdown(signal) {
 async function main() {
   try {
     // 检查数据库文件是否存在
-    try {
-      await fs.access(DB_PATH);
-    } catch (error) {
+    // console.log('encrypt', encrypt);
+    if (!fs.existsSync(DB_PATH)) {
       fastify.log.error(`数据库文件不存在: ${DB_PATH}`);
       fastify.log.info('请先运行数据生成脚本创建数据库文件');
       process.exit(1);
