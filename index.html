@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Lucky Dog DB Console</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: 'Segoe UI', Arial, sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #f0f2f5;
+        color: #1f1f1f;
+        display: flex;
+        justify-content: center;
+      }
+      main {
+        width: min(720px, 100%);
+        padding: 1.25rem 1.5rem 1.5rem;
+        margin: 1rem;
+        background: #ffffff;
+        border-radius: 10px;
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+        display: grid;
+        gap: 1rem;
+      }
+      h1 {
+        font-size: 1.5rem;
+        margin: 0;
+      }
+      h2 {
+        font-size: 1rem;
+        margin: 0 0 0.75rem;
+        color: #4a4a4a;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      section {
+        background: #fafafa;
+        border-radius: 8px;
+        padding: 0.9rem 1rem;
+        display: grid;
+        gap: 0.75rem;
+        border: 1px solid rgba(0, 0, 0, 0.05);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 1rem;
+      }
+      .actions {
+        display: grid;
+        gap: 0.4rem;
+      }
+      .actions button {
+        justify-self: stretch;
+      }
+      .field {
+        display: grid;
+        gap: 0.3rem;
+      }
+      .inline {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 0.4rem;
+        align-items: center;
+      }
+      label {
+        font-size: 0.85rem;
+        color: #5a5a5a;
+      }
+      input {
+        padding: 0.45rem 0.6rem;
+        border: 1px solid #c9c9c9;
+        border-radius: 6px;
+        font-size: 0.95rem;
+      }
+      button {
+        padding: 0.45rem 0.85rem;
+        border: none;
+        border-radius: 6px;
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: #fff;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition:
+          box-shadow 0.2s ease,
+          transform 0.1s ease;
+      }
+      button:hover {
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+        transform: translateY(-1px);
+      }
+      pre {
+        background: #1e1e1e;
+        color: #f8f8f2;
+        padding: 0.9rem;
+        border-radius: 6px;
+        margin: 0;
+        min-height: 140px;
+        overflow-x: auto;
+        font-size: 0.9rem;
+      }
+      @media (max-width: 480px) {
+        main {
+          padding: 1rem;
+          margin: 0.5rem;
+        }
+        .inline {
+          grid-template-columns: 1fr;
+        }
+        button {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Lucky Dog API Console</h1>
+
+      <div class="grid">
+        <section>
+          <h2>Quick Actions</h2>
+          <div class="actions">
+            <button data-action="count">Get Count</button>
+            <button data-action="random">Random Record</button>
+            <button data-action="health">Health Check</button>
+          </div>
+        </section>
+
+        <section>
+          <h2>Lookup</h2>
+
+          <div class="field">
+            <label for="id-input">Record ID</label>
+            <div class="inline">
+              <input id="id-input" type="number" min="1" placeholder="ID" />
+              <button data-action="by-id">Find</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="pwd-input">Password</label>
+            <div class="inline">
+              <input id="pwd-input" type="text" maxlength="10" placeholder="pwd" />
+              <button data-action="by-pwd">Find</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section>
+        <h2>Result</h2>
+        <pre id="output">Click a button to fetch data…</pre>
+      </section>
+    </main>
+
+    <script>
+      const output = document.getElementById('output');
+
+      function showResult(data) {
+        output.textContent = JSON.stringify(data, null, 2);
+      }
+
+      async function request(endpoint) {
+        try {
+          const res = await fetch(endpoint);
+          const data = await res.json();
+          showResult(data);
+        } catch (error) {
+          showResult({ error: error.message || 'Request failed' });
+        }
+      }
+
+      document.addEventListener('click', (event) => {
+        if (!(event.target instanceof HTMLButtonElement)) return;
+        const action = event.target.dataset.action;
+        if (!action) return;
+
+        if (action === 'count') {
+          request('/count');
+        } else if (action === 'random') {
+          request('/records/random');
+        } else if (action === 'health') {
+          request('/health');
+        } else if (action === 'by-id') {
+          const idValue = document.getElementById('id-input').value.trim();
+          if (!idValue) {
+            showResult({ error: 'Please enter an ID' });
+            return;
+          }
+          request(`/records/${encodeURIComponent(idValue)}`);
+        } else if (action === 'by-pwd') {
+          const pwdValue = document.getElementById('pwd-input').value.trim();
+          if (!pwdValue) {
+            showResult({ error: 'Please enter a pwd' });
+            return;
+          }
+          request(`/records/by-pwd/${encodeURIComponent(pwdValue)}`);
+        }
+      });
+    </script>
+  </body>
+</html>
