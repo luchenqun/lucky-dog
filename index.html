@@ -236,9 +236,12 @@
     }
 
     @keyframes pulse {
-      0%, 100% {
+
+      0%,
+      100% {
         transform: scale(1);
       }
+
       50% {
         transform: scale(1.02);
       }
@@ -427,9 +430,9 @@
           }
         });
         const stats = await res.json();
-        
+
         showWorkProgress(stats);
-        
+
         // If password found, stop auto refresh
         if (stats && stats.passwordFound) {
           if (autoRefreshInterval) {
@@ -438,7 +441,7 @@
             console.log('Password found! Stopped auto refresh.');
           }
         }
-        
+
         return stats;
       } catch (error) {
         showWorkProgress(null);
@@ -451,7 +454,7 @@
       if (autoRefreshInterval) {
         clearInterval(autoRefreshInterval);
       }
-      
+
       // Set up auto refresh every 30 seconds
       autoRefreshInterval = setInterval(async () => {
         console.log('Auto refreshing work stats...');
@@ -463,7 +466,7 @@
     document.addEventListener('DOMContentLoaded', async () => {
       console.log('Loading initial work stats...');
       const stats = await loadWorkStats();
-      
+
       // Start auto refresh if password not found
       if (!stats || !stats.passwordFound) {
         startAutoRefresh();
