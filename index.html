@@ -338,6 +338,7 @@
     const output = document.getElementById('output');
     const workProgress = document.getElementById('work-progress');
     let autoRefreshInterval = null;
+    let apiToken = null;
 
     function showResult(data) {
       output.textContent = JSON.stringify(data, null, 2);
@@ -345,10 +346,18 @@
 
     async function request(endpoint, options = {}) {
       try {
+        const headers = {
+          'Content-Type': 'application/json',
+          ...options.headers
+        };
+
+        // Add API token for POST requests if available
+        if (options.method === 'POST' && apiToken) {
+          headers['X-API-Token'] = apiToken;
+        }
+
         const res = await fetch(endpoint, {
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers,
           ...options
         });
         const data = await res.json();
@@ -517,9 +526,9 @@
         });
       } else if (action === 'reset-found') {
         if (confirm('Are you sure you want to reset the password found status? This will restart the entire search process.')) {
-          request('/work/reset-found', { 
+          request('/work/reset-found', {
             method: 'POST',
-            body: JSON.stringify({}) 
+            body: JSON.stringify({})
           }).then(() => {
             // Reload work stats after reset
             loadWorkStats().then(stats => {

@@ -15,6 +15,7 @@ const { Worker, isMainThread, parentPort, workerData } = require('worker_threads
 // Client configuration
 const CLIENT_ID = `client-${os.hostname()}-${Date.now()}`;
 const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3000';
+const API_TOKEN = process.env.API_TOKEN || '';
 const CPU_COUNT = os.cpus().length;
 
 // Reserve some CPU cores for other programs
@@ -32,6 +33,7 @@ if (require('worker_threads').isMainThread) {
   console.log(`Available cores for password cracking: ${AVAILABLE_CORES}`);
   console.log(`Using workers: ${MAX_WORKERS}`);
   console.log(`Server URL: ${SERVER_URL}`);
+  console.log(`API Token: ${API_TOKEN ? '***' : 'NOT SET'}`);
 }
 
 // Core decryption functions from whale.js
@@ -212,6 +214,11 @@ if (isMainThread) {
 
     async makeRequest(endpoint, method = 'GET', body = null) {
       const options = { method, headers: { 'Content-Type': 'application/json' } };
+
+      // Add API token for POST requests
+      if (method === 'POST' && API_TOKEN) {
+        options.headers['X-API-Token'] = API_TOKEN;
+      }
 
       if (body) {
         options.body = JSON.stringify(body);

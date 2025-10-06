@@ -8,6 +8,7 @@ const Database = require('better-sqlite3');
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '127.0.0.1';
 const DB_NAME = process.env.DB_NAME || 'lucky.db';
+const API_TOKEN = process.env.API_TOKEN || '';
 const DB_PATH = path.join(__dirname, 'data', DB_NAME);
 const INDEX_PATH = path.join(__dirname, 'index.html');
 
@@ -24,10 +25,44 @@ fastify.log.info(
       HOST,
       LOG_LEVEL: process.env.LOG_LEVEL || 'info',
       DB_NAME,
+      API_TOKEN: API_TOKEN ? '***' : 'NOT SET',
     },
   },
   'Loaded environment configuration',
 );
+
+// Token验证中间件 - 只对POST请求验证
+fastify.addHook('preHandler', async (request, reply) => {
+  // 只验证POST请求
+  if (request.method === 'POST') {
+    if (!API_TOKEN) {
+      fastify.log.warn('API_TOKEN not set, POST requests will be rejected');
+      reply.code(401).send({ error: 'API token required but not configured' });
+      return;
+    }
+
+    const token = request.headers['authorization'] || request.headers['x-api-token'];
+    console.log('token', token);
+
+    if (!token) {
+      fastify.log.warn(`POST ${request.url} rejected: No token provided`);
+      reply.code(401).send({ error: 'API token required' });
+      return;
+    }
+
+    // 支持 Bearer token 和直接token
+    const actualToken = token.startsWith('Bearer ') ? token.slice(7) : token;
+    console.log('actualToken', actualToken, 'API_TOKEN', API_TOKEN);
+
+    if (actualToken !== API_TOKEN) {
+      fastify.log.warn(`POST ${request.url} rejected: Invalid token`);
+      reply.code(403).send({ error: 'Invalid API token' });
+      return;
+    }
+
+    fastify.log.info(`POST ${request.url} authorized`);
+  }
+});
 
 const db = new Database(DB_PATH);
 
@@ -276,21 +311,21 @@ fastify.post('/work/found', async (request, reply) => {
 fastify.post('/work/reset-found', async (request, reply) => {
   try {
     fastify.log.info('收到重置密码找到状态的请求');
-    
+
     // 安全检查：只有使用样本数据库才允许重置
     if (DB_NAME !== 'lucky-sample.db') {
       fastify.log.warn(`拒绝重置请求：当前数据库 ${DB_NAME} 不是样本数据库`);
       reply.code(403);
-      return { 
+      return {
         error: 'Reset is only allowed for sample database (lucky-sample.db)',
         currentDatabase: DB_NAME,
-        allowed: false
+        allowed: false,
       };
     }
-    
+
     const foundPasswordFile = path.join(__dirname, 'found_password.txt');
     let previouslyFound = false;
-    
+
     if (fs.existsSync(foundPasswordFile)) {
       previouslyFound = true;
       // 备份原文件
@@ -299,21 +334,21 @@ fastify.post('/work/reset-found', async (request, reply) => {
       await fs.promises.unlink(foundPasswordFile);
       fastify.log.info(`密码找到状态已重置，原文件备份为: ${backupFile}`);
     }
-    
+
     // 重置全局状态
     passwordFound = false;
     fastify.log.info('全局密码找到状态已重置为false');
-    
+
     // 将所有记录状态重置为UNCHECK
     const resetAllStmt = db.prepare(`
       UPDATE records 
       SET status = ?, updated_at = strftime('%s', 'now')
     `);
-    
+
     const result = resetAllStmt.run(STATUS.UNCHECK);
-    
+
     fastify.log.info(`已将 ${result.changes} 条记录状态重置为UNCHECK`);
-    
+
     return {
       success: true,
       message: 'Password found status and all records reset, search can restart',
@@ -391,6 +426,7 @@ fastify.get('/work/stats', async (request, reply) => {
     summary.passwordFound = passwordFound;
     summary.database = DB_NAME;
     summary.resetAllowed = DB_NAME === 'lucky-sample.db';
+    summary.tokenRequired = !!API_TOKEN;
 
     return summary;
   } catch (error) {
