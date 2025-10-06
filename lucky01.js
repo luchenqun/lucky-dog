@@ -37,7 +37,7 @@ function main() {
   // 矿工回忆大概是9位密码，最少有2个字母，我们填充7个数字字符，一共至少9位。如果填充8位，则现有计算资源不够了
   // 填充7位，大概需要411天
   // 填充8位，大概需要4110天
-  const maxDigits = 6;
+  const maxDigits = 7;
 
   // 先预估一下总数量
   let estimateTotal = 0;
