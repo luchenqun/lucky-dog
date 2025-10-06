@@ -132,7 +132,7 @@ fastify.post('/work/request', async (request, reply) => {
 
   const updateStatusStmt = db.prepare(`
     UPDATE records 
-    SET status = ?, updated_at = datetime('now') 
+    SET status = ?, updated_at = strftime('%s', 'now') 
     WHERE id IN (${Array(batchSize).fill('?').join(',')})
   `);
 
@@ -198,7 +198,7 @@ fastify.post('/work/result', async (request, reply) => {
       if (passwords && passwords.length > 0) {
         const updateStmt = db.prepare(`
           UPDATE records 
-          SET status = ?, updated_at = datetime('now') 
+          SET status = ?, updated_at = strftime('%s', 'now') 
           WHERE pwd = ?
         `);
 
@@ -258,9 +258,9 @@ fastify.post('/work/reset-timeout', async (request, reply) => {
   try {
     const resetStmt = db.prepare(`
       UPDATE records 
-      SET status = ?, updated_at = datetime('now')
+      SET status = ?, updated_at = strftime('%s', 'now')
       WHERE status = ? 
-      AND updated_at < datetime('now', '-1 hour')
+      AND updated_at < strftime('%s', 'now') - 3600
     `);
 
     const result = resetStmt.run(STATUS.UNCHECK, STATUS.CHECKING);
@@ -288,7 +288,7 @@ fastify.get('/work/stats', async (request, reply) => {
       SELECT 
         status,
         COUNT(*) as count,
-        COUNT(CASE WHEN updated_at < datetime('now', '-1 hour') AND status = 1 THEN 1 END) as timeout_count
+        COUNT(CASE WHEN updated_at < strftime('%s', 'now') - 3600 AND status = 1 THEN 1 END) as timeout_count
       FROM records 
       GROUP BY status
     `);
@@ -328,9 +328,9 @@ setInterval(
     try {
       const resetStmt = db.prepare(`
       UPDATE records 
-      SET status = ?, updated_at = datetime('now')
+      SET status = ?, updated_at = strftime('%s', 'now')
       WHERE status = ? 
-      AND updated_at < datetime('now', '-1 hour')
+      AND updated_at < strftime('%s', 'now') - 3600
     `);
 
       const result = resetStmt.run(STATUS.UNCHECK, STATUS.CHECKING);

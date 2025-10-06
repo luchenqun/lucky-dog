@@ -15,7 +15,7 @@ const CREATE_RECORDS_TABLE_SQL = `
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     pwd TEXT NOT NULL UNIQUE,
     status INTEGER NOT NULL DEFAULT 0,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at INTEGER DEFAULT (strftime('%s', 'now'))
   );
 `;
 
