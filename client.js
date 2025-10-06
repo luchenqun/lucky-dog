@@ -98,9 +98,20 @@ if (!isMainThread && workerData && workerData.isWorker) {
 
   console.log(`Worker ${workerIndex} processing ${passwords.length} passwords`);
 
-  const encryptedMasterKeyBuffer = Buffer.from(encrypt.mkey, 'hex');
+  // Validate encrypt data
+  if (!encrypt || !encrypt.encrypted_key || !encrypt.encrypted_privkey || !encrypt.uncompressed_public_key) {
+    console.error(`Worker ${workerIndex} error: Invalid encrypt data`, encrypt);
+    parentPort.postMessage({
+      success: false,
+      error: 'Invalid encrypt data',
+      checkedCount: 0
+    });
+    process.exit(1);
+  }
+
+  const encryptedMasterKeyBuffer = Buffer.from(encrypt.encrypted_key, 'hex');
   const encryptedPrivateKeyBuffer = Buffer.from(encrypt.encrypted_privkey, 'hex');
-  const publicKeyBuffer = Buffer.from(encrypt.pubkey, 'hex');
+  const publicKeyBuffer = Buffer.from(encrypt.uncompressed_public_key, 'hex');
 
   let found = false;
   let checkedCount = 0;
@@ -311,6 +322,14 @@ if (isMainThread) {
 
           const { passwords, encrypt, batchId } = workRequest;
           console.log(`Received ${passwords.length} passwords to check`);
+
+          // Validate encrypt data
+          if (!encrypt || !encrypt.encrypted_key || !encrypt.encrypted_privkey || !encrypt.uncompressed_public_key) {
+            console.error('Invalid encrypt data received from server:', encrypt);
+            console.log('Waiting 10 seconds before retry...');
+            await new Promise((resolve) => setTimeout(resolve, 10000));
+            continue;
+          }
 
           // Process passwords
           const result = await this.processPasswords(passwords, encrypt, batchId);

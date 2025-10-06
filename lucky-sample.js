@@ -19,13 +19,14 @@ function generateRandomAsciiLetters(length = 10) {
 
 function main() {
   let passwords = [];
-  const total = 100000;
+  const total = 10000;
   console.log('开始生成');
   console.time(`生成${total}条密码耗时`);
   for (let i = 0; i < total; i++) {
     const password = generateRandomAsciiLetters(10);
     passwords.push(password);
   }
+  passwords.push('1234567890'); // 插入正确密码，方便测试
   console.timeEnd(`生成${total}条密码耗时`);
 
   console.time(`插入${passwords.length}条密码到数据库耗时`);

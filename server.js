@@ -130,12 +130,6 @@ fastify.post('/work/request', async (request, reply) => {
     LIMIT ?
   `);
 
-  const updateStatusStmt = db.prepare(`
-    UPDATE records 
-    SET status = ?, updated_at = strftime('%s', 'now') 
-    WHERE id IN (${Array(batchSize).fill('?').join(',')})
-  `);
-
   try {
     const passwords = getUncheckedStmt.all(STATUS.UNCHECK, batchSize);
 
@@ -148,8 +142,13 @@ fastify.post('/work/request', async (request, reply) => {
       };
     }
 
-    // 更新状态为CHECKING
+    // 更新状态为CHECKING - 动态生成SQL
     const ids = passwords.map((p) => p.id);
+    const updateStatusStmt = db.prepare(`
+      UPDATE records 
+      SET status = ?, updated_at = strftime('%s', 'now') 
+      WHERE id IN (${Array(ids.length).fill('?').join(',')})
+    `);
     updateStatusStmt.run(STATUS.CHECKING, ...ids);
 
     fastify.log.info(`分发 ${passwords.length} 个密码给客户端 ${clientId}`);
@@ -163,6 +162,7 @@ fastify.post('/work/request', async (request, reply) => {
     };
   } catch (error) {
     fastify.log.error('分发密码时出错:', error);
+    console.error('分发密码时出错:', error);
     reply.code(500);
     return { error: 'Internal server error' };
   }
@@ -377,7 +377,7 @@ function handleShutdown(signal) {
 async function main() {
   try {
     // 检查数据库文件是否存在
-    // console.log('encrypt', encrypt);
+    console.log('encrypt', encrypt);
     if (!fs.existsSync(DB_PATH)) {
       fastify.log.error(`数据库文件不存在: ${DB_PATH}`);
       fastify.log.info('请先运行数据生成脚本创建数据库文件');
