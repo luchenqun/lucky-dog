@@ -295,6 +295,7 @@
           <button data-action="random">Random Record</button>
           <button data-action="health">Health Check</button>
           <button data-action="stats">Work Stats</button>
+          <button id="reset-found-btn" data-action="reset-found" style="background: linear-gradient(135deg, #dc2626, #b91c1c); display: none;">Reset Password Found</button>
         </div>
       </section>
 
@@ -433,6 +434,14 @@
 
         showWorkProgress(stats);
 
+        // Show/hide reset button based on database type
+        const resetBtn = document.getElementById('reset-found-btn');
+        if (stats && stats.resetAllowed) {
+          resetBtn.style.display = 'block';
+        } else {
+          resetBtn.style.display = 'none';
+        }
+
         // If password found, stop auto refresh
         if (stats && stats.passwordFound) {
           if (autoRefreshInterval) {
@@ -506,6 +515,20 @@
             startAutoRefresh();
           }
         });
+      } else if (action === 'reset-found') {
+        if (confirm('Are you sure you want to reset the password found status? This will restart the entire search process.')) {
+          request('/work/reset-found', { 
+            method: 'POST',
+            body: JSON.stringify({}) 
+          }).then(() => {
+            // Reload work stats after reset
+            loadWorkStats().then(stats => {
+              if (!stats || !stats.passwordFound) {
+                startAutoRefresh();
+              }
+            });
+          });
+        }
       }
     });
   </script>

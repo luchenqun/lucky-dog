@@ -272,6 +272,62 @@ fastify.post('/work/found', async (request, reply) => {
   }
 });
 
+// 重置密码找到状态 - 仅限样本数据库
+fastify.post('/work/reset-found', async (request, reply) => {
+  try {
+    fastify.log.info('收到重置密码找到状态的请求');
+    
+    // 安全检查：只有使用样本数据库才允许重置
+    if (DB_NAME !== 'lucky-sample.db') {
+      fastify.log.warn(`拒绝重置请求：当前数据库 ${DB_NAME} 不是样本数据库`);
+      reply.code(403);
+      return { 
+        error: 'Reset is only allowed for sample database (lucky-sample.db)',
+        currentDatabase: DB_NAME,
+        allowed: false
+      };
+    }
+    
+    const foundPasswordFile = path.join(__dirname, 'found_password.txt');
+    let previouslyFound = false;
+    
+    if (fs.existsSync(foundPasswordFile)) {
+      previouslyFound = true;
+      // 备份原文件
+      const backupFile = path.join(__dirname, `found_password_backup_${Date.now()}.txt`);
+      await fs.promises.copyFile(foundPasswordFile, backupFile);
+      await fs.promises.unlink(foundPasswordFile);
+      fastify.log.info(`密码找到状态已重置，原文件备份为: ${backupFile}`);
+    }
+    
+    // 重置全局状态
+    passwordFound = false;
+    fastify.log.info('全局密码找到状态已重置为false');
+    
+    // 将所有记录状态重置为UNCHECK
+    const resetAllStmt = db.prepare(`
+      UPDATE records 
+      SET status = ?, updated_at = strftime('%s', 'now')
+    `);
+    
+    const result = resetAllStmt.run(STATUS.UNCHECK);
+    
+    fastify.log.info(`已将 ${result.changes} 条记录状态重置为UNCHECK`);
+    
+    return {
+      success: true,
+      message: 'Password found status and all records reset, search can restart',
+      previouslyFound,
+      recordsReset: result.changes,
+      database: DB_NAME,
+    };
+  } catch (error) {
+    fastify.log.error('重置密码找到状态时出错:', error);
+    reply.code(500);
+    return { error: 'Internal server error' };
+  }
+});
+
 // 重置超时的检查状态
 fastify.post('/work/reset-timeout', async (request, reply) => {
   try {
@@ -333,6 +389,8 @@ fastify.get('/work/stats', async (request, reply) => {
 
     summary.progress = summary.total > 0 ? ((summary.checked / summary.total) * 100).toFixed(2) : 0;
     summary.passwordFound = passwordFound;
+    summary.database = DB_NAME;
+    summary.resetAllowed = DB_NAME === 'lucky-sample.db';
 
     return summary;
   } catch (error) {
@@ -403,6 +461,15 @@ async function main() {
       fastify.log.info('请先运行数据生成脚本创建数据库文件');
       process.exit(1);
     }
+
+    // 检查密码是否已经找到
+    const foundPasswordFile = path.join(__dirname, 'found_password.txt');
+    if (fs.existsSync(foundPasswordFile)) {
+      passwordFound = true;
+      fastify.log.info('🎉 检测到密码已经找到，设置为已找到状态');
+      console.log('🎉 Password already found! Check found_password.txt for details.');
+    }
+
     await fastify.listen({ port: PORT, host: HOST });
     fastify.log.info(`Server listening on ${HOST}:${PORT}`);
   } catch (error) {
