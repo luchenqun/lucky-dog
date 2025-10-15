@@ -82,6 +82,9 @@ const STATUS = {
 let shuttingDown = false;
 let passwordFound = false; // 全局标记，密码是否已找到
 
+// 客户端活动记录 Map<clientId, lastActiveTime>
+const activeClients = new Map();
+
 const encrypt = require('./encrypt.json');
 
 fastify.get('/', async (_request, reply) => {
@@ -154,6 +157,9 @@ fastify.post('/work/request', async (request, reply) => {
     reply.code(400);
     return { error: 'clientId is required' };
   }
+
+  // 记录客户端活动时间
+  activeClients.set(clientId, Date.now());
 
   // 如果密码已找到，停止分发新任务
   if (passwordFound) {
@@ -406,6 +412,33 @@ function calculateCacheTime(totalCount) {
   return cacheMinutes * 60 * 1000; // 转换为毫秒
 }
 
+// 获取最近1小时内活跃的客户端信息
+function getActiveClientsInfo() {
+  const oneHourAgo = Date.now() - 60 * 60 * 1000;
+  const activeClientsList = [];
+
+  // 清理过期的客户端记录，并收集活跃客户端信息
+  for (const [clientId, lastActiveTime] of activeClients.entries()) {
+    if (lastActiveTime < oneHourAgo) {
+      activeClients.delete(clientId); // 删除超过1小时未活跃的客户端
+    } else {
+      activeClientsList.push({
+        clientId,
+        lastActiveTime,
+        lastActiveDuration: Math.floor((Date.now() - lastActiveTime) / 1000), // 距离上次活跃的秒数
+      });
+    }
+  }
+
+  // 按最后活跃时间排序（最近的在前）
+  activeClientsList.sort((a, b) => b.lastActiveTime - a.lastActiveTime);
+
+  return {
+    count: activeClientsList.length,
+    clients: activeClientsList,
+  };
+}
+
 fastify.get('/work/stats', async (request, reply) => {
   try {
     // 检查缓存是否有效
@@ -413,7 +446,13 @@ fastify.get('/work/stats', async (request, reply) => {
       const cacheTime = calculateCacheTime(cacheStats.total);
       if (cacheTime > 0 && Date.now() - cacheStats.updated_at < cacheTime) {
         fastify.log.info(`返回缓存的统计信息 (总记录数: ${cacheStats.total.toLocaleString()})`);
-        return cacheStats;
+        // 更新活跃客户端信息（实时数据，不缓存）
+        const clientsInfo = getActiveClientsInfo();
+        return {
+          ...cacheStats,
+          activeClients: clientsInfo.count,
+          activeClientsList: clientsInfo.clients,
+        };
       }
     }
 
@@ -460,6 +499,12 @@ fastify.get('/work/stats', async (request, reply) => {
       summary.database = DB_NAME;
       summary.resetAllowed = DB_NAME === 'lucky-sample.db';
       summary.tokenRequired = !!API_TOKEN;
+
+      // 添加活跃客户端信息
+      const clientsInfo = getActiveClientsInfo();
+      summary.activeClients = clientsInfo.count;
+      summary.activeClientsList = clientsInfo.clients;
+
       summary.updated_at = Date.now(); // 添加更新时间戳
 
       // 更新缓存

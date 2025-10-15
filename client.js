@@ -13,7 +13,7 @@ const secp256k1 = require('secp256k1');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 
 // Client configuration
-const CLIENT_ID = `client-${os.hostname()}-${Date.now()}`;
+const CLIENT_ID = `client-${os.hostname()}`;
 const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3000';
 const API_TOKEN = process.env.API_TOKEN || '';
 const CPU_COUNT = os.cpus().length;
@@ -21,7 +21,7 @@ const CPU_COUNT = os.cpus().length;
 // Reserve some CPU cores for other programs
 // Default: use 75% of CPU cores, minimum 1, maximum CPU_COUNT-1 (leave at least 1 core free)
 const CPU_USAGE_RATIO = parseFloat(process.env.CPU_USAGE_RATIO || '0.75');
-const RESERVED_CORES = Math.max(1, Math.ceil(CPU_COUNT * (1 - CPU_USAGE_RATIO)));
+const RESERVED_CORES = process.env.CPU_USAGE_RATIO == '1' ? 0 : Math.max(1, Math.ceil(CPU_COUNT * (1 - CPU_USAGE_RATIO)));
 const AVAILABLE_CORES = Math.max(1, CPU_COUNT - RESERVED_CORES);
 const MAX_WORKERS = Math.min(AVAILABLE_CORES, parseInt(process.env.MAX_WORKERS || AVAILABLE_CORES));
 
