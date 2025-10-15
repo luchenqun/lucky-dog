@@ -7,7 +7,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "format": "prettier --cache --write .",
-    "format:check": "prettier --cache --check ."
+    "format:check": "prettier --cache --check .",
+    "start": "node client.js",
+    "server": "node server.js"
   },
   "keywords": [],
   "author": "",
