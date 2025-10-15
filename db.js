@@ -84,6 +84,8 @@ function insertToDb(dbName, passwords, options = {}) {
         const result = insertStmt.run(password.trim(), STATUS.UNCHECK);
         if (result.changes > 0) {
           insertedCount++;
+        } else {
+          console.log(`插入失败: ${password.trim()}`);
         }
       }
     }

@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 const { insertToDb, closeDb } = require('./db');
 
@@ -18,6 +19,13 @@ function generateRandomAsciiLetters(length = 10) {
 }
 
 function main() {
+  // 先删除数据库文件（如果存在）
+  const dbPath = path.join(__dirname, 'data', dbName);
+  if (fs.existsSync(dbPath)) {
+    console.log(`删除现有数据库文件: ${dbPath}`);
+    fs.unlinkSync(dbPath);
+  }
+
   let passwords = [];
   const total = 3000;
   console.log('开始生成');
