@@ -392,43 +392,92 @@ fastify.post('/work/reset-timeout', async (request, reply) => {
 });
 
 // 获取工作状态统计
+let cacheStats = null;
+let isUpdatingStats = false;
+
+// 计算缓存时间（毫秒）
+function calculateCacheTime(totalCount) {
+  if (totalCount <= 10000) {
+    return 0; // 1万条以下不缓存
+  }
+
+  const millionCount = Math.floor(totalCount / 1000000);
+  const cacheMinutes = Math.min(millionCount, 60); // 最多缓存60分钟
+  return cacheMinutes * 60 * 1000; // 转换为毫秒
+}
+
 fastify.get('/work/stats', async (request, reply) => {
   try {
-    const statsStmt = db.prepare(`
-      SELECT 
-        status,
-        COUNT(*) as count,
-        COUNT(CASE WHEN updated_at < strftime('%s', 'now') - 3600 AND status = 1 THEN 1 END) as timeout_count
-      FROM records 
-      GROUP BY status
-    `);
-
-    const stats = statsStmt.all();
-    const summary = {
-      uncheck: 0,
-      checking: 0,
-      checked: 0,
-      timeout: 0,
-      total: 0,
-    };
-
-    for (const stat of stats) {
-      summary.total += stat.count;
-      if (stat.status === STATUS.UNCHECK) summary.uncheck = stat.count;
-      if (stat.status === STATUS.CHECKING) {
-        summary.checking = stat.count;
-        summary.timeout = stat.timeout_count;
+    // 检查缓存是否有效
+    if (cacheStats) {
+      const cacheTime = calculateCacheTime(cacheStats.total);
+      if (cacheTime > 0 && Date.now() - cacheStats.updated_at < cacheTime) {
+        fastify.log.info(`返回缓存的统计信息 (总记录数: ${cacheStats.total.toLocaleString()})`);
+        return cacheStats;
       }
-      if (stat.status === STATUS.CHECKED) summary.checked = stat.count;
     }
 
-    summary.progress = summary.total > 0 ? ((summary.checked / summary.total) * 100).toFixed(2) : 0;
-    summary.passwordFound = passwordFound;
-    summary.database = DB_NAME;
-    summary.resetAllowed = DB_NAME === 'lucky-sample.db';
-    summary.tokenRequired = !!API_TOKEN;
+    // 如果正在更新统计信息，直接返回缓存结果（如果有的话）
+    if (isUpdatingStats) {
+      fastify.log.info('统计信息正在更新中，返回缓存结果');
+      return cacheStats || { error: 'Statistics are being updated, please try again later' };
+    }
 
-    return summary;
+    // 设置更新标志
+    isUpdatingStats = true;
+
+    try {
+      const statsStmt = db.prepare(`
+        SELECT 
+          status,
+          COUNT(*) as count,
+          COUNT(CASE WHEN updated_at < strftime('%s', 'now') - 3600 AND status = 1 THEN 1 END) as timeout_count
+        FROM records 
+        GROUP BY status
+      `);
+
+      const stats = statsStmt.all();
+      const summary = {
+        uncheck: 0,
+        checking: 0,
+        checked: 0,
+        timeout: 0,
+        total: 0,
+      };
+
+      for (const stat of stats) {
+        summary.total += stat.count;
+        if (stat.status === STATUS.UNCHECK) summary.uncheck = stat.count;
+        if (stat.status === STATUS.CHECKING) {
+          summary.checking = stat.count;
+          summary.timeout = stat.timeout_count;
+        }
+        if (stat.status === STATUS.CHECKED) summary.checked = stat.count;
+      }
+
+      summary.progress = summary.total > 0 ? ((summary.checked / summary.total) * 100).toFixed(2) : 0;
+      summary.passwordFound = passwordFound;
+      summary.database = DB_NAME;
+      summary.resetAllowed = DB_NAME === 'lucky-sample.db';
+      summary.tokenRequired = !!API_TOKEN;
+      summary.updated_at = Date.now(); // 添加更新时间戳
+
+      // 更新缓存
+      cacheStats = summary;
+
+      const cacheTime = calculateCacheTime(summary.total);
+      if (cacheTime > 0) {
+        const cacheMinutes = Math.floor(cacheTime / (60 * 1000));
+        fastify.log.info(`统计信息已缓存 ${cacheMinutes} 分钟 (总记录数: ${summary.total.toLocaleString()})`);
+      } else {
+        fastify.log.info(`统计信息未缓存，实时更新 (总记录数: ${summary.total.toLocaleString()})`);
+      }
+
+      return summary;
+    } finally {
+      // 清除更新标志
+      isUpdatingStats = false;
+    }
   } catch (error) {
     fastify.log.error('获取统计信息时出错:', error);
     reply.code(500);
@@ -436,7 +485,7 @@ fastify.get('/work/stats', async (request, reply) => {
   }
 });
 
-// 定时任务：每10分钟自动重置超时状态
+// 定时任务：每60分钟自动重置超时状态
 setInterval(
   async () => {
     try {
@@ -456,8 +505,8 @@ setInterval(
       fastify.log.error('自动重置超时状态时出错:', error);
     }
   },
-  10 * 60 * 1000,
-); // 10分钟
+  60 * 60 * 1000,
+); // 60分钟
 
 function handleShutdown(signal) {
   if (shuttingDown) {

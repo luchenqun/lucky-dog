@@ -425,7 +425,7 @@
           </div>
           
           <div class="last-updated">
-            Last updated: ${new Date().toLocaleTimeString()}
+            Last updated: ${new Date(stats.updated_at).toLocaleTimeString()}
             ${stats.timeout > 0 ? `• ${stats.timeout} timeout(s)` : ''}
           </div>
         </div>
