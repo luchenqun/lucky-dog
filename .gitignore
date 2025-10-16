@@ -26,3 +26,5 @@ encrypt.true.json
 
 *.txt
 .startup_time
+
+clients.json

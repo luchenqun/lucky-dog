@@ -12,8 +12,10 @@ const API_TOKEN = process.env.API_TOKEN || '';
 const DB_PATH = path.join(__dirname, 'data', DB_NAME);
 const INDEX_PATH = path.join(__dirname, 'index.html');
 const STARTUP_TIME_FILE = path.join(__dirname, '.startup_time');
+const CLIENTS_DATA_FILE = path.join(__dirname, 'clients.json');
 
-let startupTime = Date.now(); // 默认为当前时间
+let startupTime = Date.now();
+let clients = {}; // 默认为当前时间
 
 const fastify = Fastify({
   logger: {
@@ -84,9 +86,6 @@ const STATUS = {
 
 let shuttingDown = false;
 let passwordFound = false; // 全局标记，密码是否已找到
-
-// 客户端活动记录 Map<clientId, lastActiveTime>
-const activeClients = new Map();
 
 const encrypt = require('./encrypt.json');
 
@@ -161,8 +160,12 @@ fastify.post('/work/request', async (request, reply) => {
     return { error: 'clientId is required' };
   }
 
-  // 记录客户端活动时间
-  activeClients.set(clientId, Date.now());
+  // 记录客户端活动时间，只更新 lastActiveTime 保留 processedCount
+  if (!clients[clientId]) {
+    clients[clientId] = { lastActiveTime: Date.now(), processedCount: 0 };
+  } else {
+    clients[clientId].lastActiveTime = Date.now();
+  }
 
   // 如果密码已找到，停止分发新任务
   if (passwordFound) {
@@ -269,7 +272,14 @@ fastify.post('/work/result', async (request, reply) => {
 
         updateMany(passwords);
 
-        fastify.log.info(`客户端 ${clientId} 完成 ${passwords.length} 个密码检查`);
+        // 更新客户端已处理的密码计数
+        if (!clients[clientId]) {
+          clients[clientId] = { lastActiveTime: Date.now(), processedCount: 0 };
+        }
+        clients[clientId].processedCount += passwords.length;
+        clients[clientId].lastActiveTime = Date.now();
+
+        fastify.log.info(`客户端 ${clientId} 完成 ${passwords.length} 个密码检查，累计处理: ${clients[clientId].processedCount}`);
       }
 
       return {
@@ -431,31 +441,13 @@ function formatUptime(seconds) {
   return parts.join(' ');
 }
 
-// 获取最近1小时内活跃的客户端信息
-function getActiveClientsInfo() {
-  const oneHourAgo = Date.now() - 60 * 60 * 1000;
-  const activeClientsList = [];
-
-  // 清理过期的客户端记录，并收集活跃客户端信息
-  for (const [clientId, lastActiveTime] of activeClients.entries()) {
-    if (lastActiveTime < oneHourAgo) {
-      activeClients.delete(clientId); // 删除超过1小时未活跃的客户端
-    } else {
-      activeClientsList.push({
-        clientId,
-        lastActiveTime,
-        lastActiveDuration: Math.floor((Date.now() - lastActiveTime) / 1000), // 距离上次活跃的秒数
-      });
-    }
+// 持久化客户端数据到文件
+function persistClientsData() {
+  try {
+    fs.writeFileSync(CLIENTS_DATA_FILE, JSON.stringify(clients, null, 2), 'utf-8');
+  } catch (error) {
+    fastify.log.warn('持久化客户端数据失败:', error.message);
   }
-
-  // 按最后活跃时间排序（最近的在前）
-  activeClientsList.sort((a, b) => b.lastActiveTime - a.lastActiveTime);
-
-  return {
-    count: activeClientsList.length,
-    clients: activeClientsList,
-  };
 }
 
 fastify.get('/work/stats', async (request, reply) => {
@@ -465,12 +457,10 @@ fastify.get('/work/stats', async (request, reply) => {
       const cacheTime = calculateCacheTime(cacheStats.total);
       if (cacheTime > 0 && Date.now() - cacheStats.updated_at < cacheTime) {
         fastify.log.info(`返回缓存的统计信息 (总记录数: ${cacheStats.total.toLocaleString()})`);
-        // 更新活跃客户端信息（实时数据，不缓存）
-        const clientsInfo = getActiveClientsInfo();
+        // 添加客户端信息（实时数据，不缓存）
         return {
           ...cacheStats,
-          activeClients: clientsInfo.count,
-          activeClientsList: clientsInfo.clients,
+          clients,
         };
       }
     }
@@ -519,10 +509,8 @@ fastify.get('/work/stats', async (request, reply) => {
       summary.resetAllowed = DB_NAME === 'lucky-sample.db';
       summary.tokenRequired = !!API_TOKEN;
 
-      // 添加活跃客户端信息
-      const clientsInfo = getActiveClientsInfo();
-      summary.activeClients = clientsInfo.count;
-      summary.activeClientsList = clientsInfo.clients;
+      // 添加客户端信息
+      summary.clients = clients;
 
       summary.updated_at = Date.now(); // 添加更新时间戳
 
@@ -570,6 +558,9 @@ setInterval(
       if (result.changes > 0) {
         fastify.log.info(`自动重置了 ${result.changes} 个超时的检查状态`);
       }
+
+      // 持久化客户端数据
+      persistClientsData();
     } catch (error) {
       fastify.log.error('自动重置超时状态时出错:', error);
     }
@@ -601,6 +592,12 @@ function handleShutdown(signal) {
         console.timeEnd('关闭数据库耗时');
       } catch (error) {
         fastify.log.error(error, 'Error while closing database');
+      }
+      try {
+        fastify.log.info('持久化客户端数据');
+        persistClientsData();
+      } catch (error) {
+        fastify.log.error(error, 'Error while persisting clients data');
       }
       process.exit(0);
     });
@@ -640,6 +637,25 @@ async function main() {
       startupTime = Date.now();
       fs.writeFileSync(STARTUP_TIME_FILE, String(startupTime));
       fastify.log.info('创建启动时间文件');
+    }
+
+    // 读取或创建客户端数据文件
+    if (fs.existsSync(CLIENTS_DATA_FILE)) {
+      try {
+        const fileContent = fs.readFileSync(CLIENTS_DATA_FILE, 'utf-8');
+        const savedClients = JSON.parse(fileContent);
+        if (typeof savedClients === 'object' && savedClients !== null) {
+          clients = savedClients;
+          const clientCount = Object.keys(clients).length;
+          fastify.log.info(`从文件读取客户端数据，共 ${clientCount} 个客户端`);
+        } else {
+          fastify.log.info('客户端数据文件内容无效，已初始化空客户端对象');
+        }
+      } catch (error) {
+        fastify.log.warn('读取客户端数据文件失败，已初始化空客户端对象:', error.message);
+      }
+    } else {
+      fastify.log.info('客户端数据文件不存在，已初始化空客户端对象');
     }
 
     // 检查密码是否已经找到
