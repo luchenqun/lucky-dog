@@ -338,7 +338,36 @@
     const output = document.getElementById('output');
     const workProgress = document.getElementById('work-progress');
     let autoRefreshInterval = null;
+    let uptimeUpdateInterval = null;
+    let serverStartupTime = null;
     let apiToken = null;
+
+    // 格式化运行时长
+    function formatUptime(seconds) {
+      const days = Math.floor(seconds / 86400);
+      const hours = Math.floor((seconds % 86400) / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+
+      const parts = [];
+      if (days > 0) parts.push(`${days}天`);
+      if (hours > 0) parts.push(`${hours}小时`);
+      if (minutes > 0) parts.push(`${minutes}分钟`);
+      if (secs > 0 || parts.length === 0) parts.push(`${secs}秒`);
+
+      return parts.join(' ');
+    }
+
+    // 更新 uptime 显示
+    function updateUptimeDisplay() {
+      if (!serverStartupTime) return;
+
+      const uptimeElement = document.querySelector('.uptime-display');
+      if (uptimeElement) {
+        const uptime = Math.floor((Date.now() - serverStartupTime) / 1000);
+        uptimeElement.textContent = formatUptime(uptime);
+      }
+    }
 
     function showResult(data) {
       output.textContent = JSON.stringify(data, null, 2);
@@ -431,10 +460,23 @@
         const oneHourAgo = Date.now() - 60 * 60 * 1000;
         return stats.clients[clientId].lastActiveTime > oneHourAgo;
       }).length : 0} active client(s)
-            • Uptime: ${stats.uptimeFormatted || 'N/A'}
+            • Uptime: <span class="uptime-display">${stats.uptimeFormatted || 'N/A'}</span>
           </div>
         </div>
       `;
+
+      // 保存启动时间并启动实时更新
+      if (stats.uptime) {
+        serverStartupTime = Date.now() - (stats.uptime * 1000);
+
+        // 清除旧的定时器
+        if (uptimeUpdateInterval) {
+          clearInterval(uptimeUpdateInterval);
+        }
+
+        // 每秒更新一次 uptime 显示
+        uptimeUpdateInterval = setInterval(updateUptimeDisplay, 1000);
+      }
     }
 
     async function loadWorkStats() {
