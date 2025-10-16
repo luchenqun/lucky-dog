@@ -454,11 +454,31 @@ fastify.get('/work/stats', async (request, reply) => {
       const cacheTime = calculateCacheTime(cacheStats.total);
       if (cacheTime > 0 && Date.now() - cacheStats.updated_at < cacheTime) {
         fastify.log.info(`返回缓存的统计信息 (总记录数: ${cacheStats.total.toLocaleString()})`);
+
+        // 计算 clients 中已处理的密码总数
+        const totalProcessed = Object.values(clients).reduce((sum, client) => sum + (client.processedCount || 0), 0);
+
+        // 重新计算统计数据
+        const checked = totalProcessed;
+        const uncheck = cacheStats.total - totalProcessed;
+        const checking = 0;
+        const progress = cacheStats.total > 0 ? ((checked / cacheStats.total) * 100).toFixed(2) : 0;
+
         // 添加客户端信息和运行时长（实时数据，不缓存）
         const uptime = Math.floor((Date.now() - startupTime) / 1000);
+
         return {
-          ...cacheStats,
+          uncheck,
+          checking,
+          checked,
+          total: cacheStats.total,
+          progress,
+          passwordFound: cacheStats.passwordFound,
+          database: cacheStats.database,
+          resetAllowed: cacheStats.resetAllowed,
+          tokenRequired: cacheStats.tokenRequired,
           clients,
+          updated_at: cacheStats.updated_at,
           uptime,
           uptimeFormatted: formatUptime(uptime),
         };
@@ -469,10 +489,29 @@ fastify.get('/work/stats', async (request, reply) => {
     if (isUpdatingStats) {
       fastify.log.info('统计信息正在更新中，返回缓存结果');
       if (cacheStats) {
+        // 计算 clients 中已处理的密码总数
+        const totalProcessed = Object.values(clients).reduce((sum, client) => sum + (client.processedCount || 0), 0);
+
+        // 重新计算统计数据
+        const checked = totalProcessed;
+        const uncheck = cacheStats.total - totalProcessed;
+        const checking = 0;
+        const progress = cacheStats.total > 0 ? ((checked / cacheStats.total) * 100).toFixed(2) : 0;
+
         const uptime = Math.floor((Date.now() - startupTime) / 1000);
+
         return {
-          ...cacheStats,
+          uncheck,
+          checking,
+          checked,
+          total: cacheStats.total,
+          progress,
+          passwordFound: cacheStats.passwordFound,
+          database: cacheStats.database,
+          resetAllowed: cacheStats.resetAllowed,
+          tokenRequired: cacheStats.tokenRequired,
           clients,
+          updated_at: cacheStats.updated_at,
           uptime,
           uptimeFormatted: formatUptime(uptime),
         };
@@ -484,31 +523,19 @@ fastify.get('/work/stats', async (request, reply) => {
     isUpdatingStats = true;
 
     try {
-      const statsStmt = db.prepare(`
-        SELECT 
-          status,
-          COUNT(*) as count,
-          COUNT(CASE WHEN updated_at < strftime('%s', 'now') - 3600 AND status = 1 THEN 1 END) as timeout_count
-        FROM records 
-        GROUP BY status
-      `);
-
+      const statsStmt = db.prepare('SELECT status, COUNT(*) as count FROM records GROUP BY status');
       const stats = statsStmt.all();
       const summary = {
         uncheck: 0,
         checking: 0,
         checked: 0,
-        timeout: 0,
         total: 0,
       };
 
       for (const stat of stats) {
         summary.total += stat.count;
         if (stat.status === STATUS.UNCHECK) summary.uncheck = stat.count;
-        if (stat.status === STATUS.CHECKING) {
-          summary.checking = stat.count;
-          summary.timeout = stat.timeout_count;
-        }
+        if (stat.status === STATUS.CHECKING) summary.checking = stat.count;
         if (stat.status === STATUS.CHECKED) summary.checked = stat.count;
       }
 

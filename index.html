@@ -415,7 +415,6 @@
       }
 
       const checkedPercent = stats.total > 0 ? (stats.checked / stats.total * 100) : 0;
-      const checkingPercent = stats.total > 0 ? (stats.checking / stats.total * 100) : 0;
       const uncheckPercent = stats.total > 0 ? (stats.uncheck / stats.total * 100) : 0;
 
       workProgress.innerHTML = `
@@ -424,9 +423,6 @@
             <div class="progress-segments">
               <div class="progress-segment progress-checked" style="width: ${checkedPercent}%">
                 ${checkedPercent > 10 ? `${checkedPercent.toFixed(1)}%` : ''}
-              </div>
-              <div class="progress-segment progress-checking" style="width: ${checkingPercent}%">
-                ${checkingPercent > 10 ? `${checkingPercent.toFixed(1)}%` : ''}
               </div>
               <div class="progress-segment progress-uncheck" style="width: ${uncheckPercent}%">
                 ${uncheckPercent > 10 ? `${uncheckPercent.toFixed(1)}%` : ''}
@@ -438,10 +434,6 @@
             <div class="stat-card stat-checked">
               <div class="stat-number">${stats.checked.toLocaleString()}</div>
               <div class="stat-label">Checked</div>
-            </div>
-            <div class="stat-card stat-checking">
-              <div class="stat-number">${stats.checking.toLocaleString()}</div>
-              <div class="stat-label">Checking</div>
             </div>
             <div class="stat-card stat-uncheck">
               <div class="stat-number">${stats.uncheck.toLocaleString()}</div>
@@ -455,7 +447,6 @@
           
           <div class="last-updated">
             Last updated: ${new Date(stats.updated_at).toLocaleTimeString()}
-            ${stats.timeout > 0 ? `• ${stats.timeout} timeout(s)` : ''}
             • ${stats.clients ? Object.keys(stats.clients).filter(clientId => {
         const oneHourAgo = Date.now() - 60 * 60 * 1000;
         return stats.clients[clientId].lastActiveTime > oneHourAgo;
