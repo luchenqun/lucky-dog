@@ -34,6 +34,13 @@ if (require('worker_threads').isMainThread) {
   console.log(`Using workers: ${MAX_WORKERS}`);
   console.log(`Server URL: ${SERVER_URL}`);
   console.log(`API Token: ${API_TOKEN ? '***' : 'NOT SET'}`);
+  // 显示当前北京时间
+  const getBeijingTime = () => {
+    const now = new Date();
+    const beijingTime = new Date(now.getTime() + (8 - now.getTimezoneOffset() / 60) * 60 * 60 * 1000 - now.getTimezoneOffset() * 60 * 1000);
+    return beijingTime.toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' });
+  };
+  console.log(`current time: ${getBeijingTime()}`);
 }
 
 // Core decryption functions from whale.js
