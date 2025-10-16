@@ -47,7 +47,6 @@ fastify.addHook('preHandler', async (request, reply) => {
     }
 
     const token = request.headers['authorization'] || request.headers['x-api-token'];
-    console.log('token', token);
 
     if (!token) {
       fastify.log.warn(`POST ${request.url} rejected: No token provided`);
@@ -57,8 +56,6 @@ fastify.addHook('preHandler', async (request, reply) => {
 
     // 支持 Bearer token 和直接token
     const actualToken = token.startsWith('Bearer ') ? token.slice(7) : token;
-    console.log('actualToken', actualToken, 'API_TOKEN', API_TOKEN);
-
     if (actualToken !== API_TOKEN) {
       fastify.log.warn(`POST ${request.url} rejected: Invalid token`);
       reply.code(403).send({ error: 'Invalid API token' });
