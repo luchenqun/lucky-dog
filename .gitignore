@@ -25,3 +25,4 @@ encrypt.json
 encrypt.true.json
 
 *.txt
+.startup_time

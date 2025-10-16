@@ -11,6 +11,9 @@ const DB_NAME = process.env.DB_NAME || 'lucky.db';
 const API_TOKEN = process.env.API_TOKEN || '';
 const DB_PATH = path.join(__dirname, 'data', DB_NAME);
 const INDEX_PATH = path.join(__dirname, 'index.html');
+const STARTUP_TIME_FILE = path.join(__dirname, '.startup_time');
+
+let startupTime = Date.now(); // 默认为当前时间
 
 const fastify = Fastify({
   logger: {
@@ -412,6 +415,22 @@ function calculateCacheTime(totalCount) {
   return cacheMinutes * 60 * 1000; // 转换为毫秒
 }
 
+// 格式化运行时长
+function formatUptime(seconds) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  const parts = [];
+  if (days > 0) parts.push(`${days}天`);
+  if (hours > 0) parts.push(`${hours}小时`);
+  if (minutes > 0) parts.push(`${minutes}分钟`);
+  if (secs > 0 || parts.length === 0) parts.push(`${secs}秒`);
+
+  return parts.join(' ');
+}
+
 // 获取最近1小时内活跃的客户端信息
 function getActiveClientsInfo() {
   const oneHourAgo = Date.now() - 60 * 60 * 1000;
@@ -507,6 +526,11 @@ fastify.get('/work/stats', async (request, reply) => {
 
       summary.updated_at = Date.now(); // 添加更新时间戳
 
+      // 计算系统运行时长（单位：秒）
+      const uptime = Math.floor((Date.now() - startupTime) / 1000);
+      summary.uptime = uptime;
+      summary.uptimeFormatted = formatUptime(uptime); // 格式化的运行时长
+
       // 更新缓存
       cacheStats = summary;
 
@@ -590,6 +614,32 @@ async function main() {
       fastify.log.error(`数据库文件不存在: ${DB_PATH}`);
       fastify.log.info('请先运行数据生成脚本创建数据库文件');
       process.exit(1);
+    }
+
+    // 读取或创建启动时间文件
+    if (fs.existsSync(STARTUP_TIME_FILE)) {
+      try {
+        const fileContent = fs.readFileSync(STARTUP_TIME_FILE, 'utf-8').trim();
+        const savedStartupTime = parseInt(fileContent, 10);
+        if (Number.isInteger(savedStartupTime) && savedStartupTime > 0) {
+          startupTime = savedStartupTime;
+          const uptime = Math.floor((Date.now() - startupTime) / 1000);
+          fastify.log.info(`从文件读取启动时间，系统已运行 ${formatUptime(uptime)}`);
+        } else {
+          startupTime = Date.now();
+          fs.writeFileSync(STARTUP_TIME_FILE, String(startupTime));
+          fastify.log.info('启动时间文件内容无效，已创建新的启动时间记录');
+        }
+      } catch (error) {
+        startupTime = Date.now();
+        fs.writeFileSync(STARTUP_TIME_FILE, String(startupTime));
+        fastify.log.warn('读取启动时间文件失败，已创建新的启动时间记录');
+      }
+    } else {
+      // 文件不存在，创建新的
+      startupTime = Date.now();
+      fs.writeFileSync(STARTUP_TIME_FILE, String(startupTime));
+      fastify.log.info('创建启动时间文件');
     }
 
     // 检查密码是否已经找到

@@ -428,6 +428,7 @@
             Last updated: ${new Date(stats.updated_at).toLocaleTimeString()}
             ${stats.timeout > 0 ? `• ${stats.timeout} timeout(s)` : ''}
             • ${stats.activeClients || 0} active client(s)
+            • Uptime: ${stats.uptimeFormatted || 'N/A'}
           </div>
         </div>
       `;
