@@ -454,10 +454,13 @@ fastify.get('/work/stats', async (request, reply) => {
       const cacheTime = calculateCacheTime(cacheStats.total);
       if (cacheTime > 0 && Date.now() - cacheStats.updated_at < cacheTime) {
         fastify.log.info(`返回缓存的统计信息 (总记录数: ${cacheStats.total.toLocaleString()})`);
-        // 添加客户端信息（实时数据，不缓存）
+        // 添加客户端信息和运行时长（实时数据，不缓存）
+        const uptime = Math.floor((Date.now() - startupTime) / 1000);
         return {
           ...cacheStats,
           clients,
+          uptime,
+          uptimeFormatted: formatUptime(uptime),
         };
       }
     }
@@ -465,7 +468,16 @@ fastify.get('/work/stats', async (request, reply) => {
     // 如果正在更新统计信息，直接返回缓存结果（如果有的话）
     if (isUpdatingStats) {
       fastify.log.info('统计信息正在更新中，返回缓存结果');
-      return cacheStats || { error: 'Statistics are being updated, please try again later' };
+      if (cacheStats) {
+        const uptime = Math.floor((Date.now() - startupTime) / 1000);
+        return {
+          ...cacheStats,
+          clients,
+          uptime,
+          uptimeFormatted: formatUptime(uptime),
+        };
+      }
+      return { error: 'Statistics are being updated, please try again later' };
     }
 
     // 设置更新标志
